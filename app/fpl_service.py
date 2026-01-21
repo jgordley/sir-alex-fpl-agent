@@ -6,15 +6,14 @@ import aiohttp
 from fpl import FPL
 
 
-FPL_EMAIL = os.getenv("FPL_EMAIL")
-FPL_PASSWORD = os.getenv("FPL_PASSWORD")
-
-
 async def _get_fpl_client(session: aiohttp.ClientSession, login: bool = False) -> FPL:
     """Create an FPL client, optionally logging in."""
     fpl = FPL(session)
-    if login and FPL_EMAIL and FPL_PASSWORD:
-        await fpl.login(email=FPL_EMAIL, password=FPL_PASSWORD)
+    if login:
+        email = os.getenv("FPL_EMAIL")
+        password = os.getenv("FPL_PASSWORD")
+        if email and password:
+            await fpl.login(email=email, password=password)
     return fpl
 
 
@@ -99,12 +98,39 @@ async def get_top_players(position: str | None = None, limit: int = 10) -> list[
         return sorted_players[:limit]
 
 
-async def get_user_team(team_id: int) -> dict:
-    """Get a user's current team (requires authentication)."""
+async def get_user_team(team_id: int, gameweek: int | None = None) -> dict:
+    """Get a user's team for a specific gameweek.
+
+    Uses public API endpoint - no authentication required.
+
+    Args:
+        team_id: The FPL team ID.
+        gameweek: Gameweek number. If None, uses current gameweek.
+
+    Returns:
+        Dict with team picks and player details.
+    """
     async with aiohttp.ClientSession() as session:
-        fpl = await _get_fpl_client(session, login=True)
-        user = await fpl.get_user(team_id)
-        team = await user.get_team()
+        fpl = await _get_fpl_client(session)
+
+        # Get current gameweek if not specified
+        if gameweek is None:
+            gameweeks = await fpl.get_gameweeks(return_json=True)
+            for gw in gameweeks:
+                if gw.get("is_current"):
+                    gameweek = gw["id"]
+                    break
+            if gameweek is None:
+                gameweek = 1
+
+        # Fetch picks directly from public API
+        url = f"https://fantasy.premierleague.com/api/entry/{team_id}/event/{gameweek}/picks/"
+        async with session.get(url) as response:
+            if response.status != 200:
+                return {"team": [], "error": f"Failed to fetch team: {response.status}"}
+            picks_data = await response.json()
+
+        team = picks_data.get("picks", [])
 
         # Get player details for each team member
         players = await fpl.get_players(return_json=True)
@@ -122,7 +148,12 @@ async def get_user_team(team_id: int) -> dict:
                 "now_cost": player_info.get("now_cost", 0),
             })
 
-        return {"team": enriched_team}
+        return {
+            "team": enriched_team,
+            "gameweek": gameweek,
+            "active_chip": picks_data.get("active_chip"),
+            "points": picks_data.get("entry_history", {}).get("points"),
+        }
 
 
 async def get_user_info(team_id: int) -> dict:
@@ -178,9 +209,9 @@ def sync_get_top_players(position: str | None = None, limit: int = 10) -> list[d
     return asyncio.run(get_top_players(position, limit))
 
 
-def sync_get_user_team(team_id: int) -> dict:
+def sync_get_user_team(team_id: int, gameweek: int | None = None) -> dict:
     """Synchronous wrapper for get_user_team."""
-    return asyncio.run(get_user_team(team_id))
+    return asyncio.run(get_user_team(team_id, gameweek))
 
 
 def sync_get_user_info(team_id: int) -> dict:

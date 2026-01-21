@@ -2,7 +2,7 @@
 
 from langchain_core.tools import tool
 
-from app.fpl_service import sync_get_player_by_name
+from app.fpl_service import sync_get_player_by_name, sync_get_user_team
 
 
 POSITION_MAP = {1: "Goalkeeper", 2: "Defender", 3: "Midfielder", 4: "Forward"}
@@ -88,5 +88,56 @@ News: {player.get('news') or 'None'}
 """.strip()
 
 
+@tool
+def get_fpl_team(team_id: int, gameweek: int | None = None) -> str:
+    """Look up an FPL manager's team squad for a specific gameweek.
+
+    Use this tool when the user asks about their team, someone's FPL team,
+    or wants to see a squad lineup for a specific gameweek.
+
+    Args:
+        team_id: The FPL Team ID (found in the URL of an FPL team page).
+        gameweek: Optional gameweek number (1-38). If not provided, uses current gameweek.
+
+    Returns:
+        A formatted string with the team's squad, captain, and points.
+    """
+    team_data = sync_get_user_team(team_id, gameweek)
+
+    if team_data.get("error"):
+        return f"Error fetching team: {team_data['error']}"
+
+    squad = team_data.get("team", [])
+    if not squad:
+        return f"No squad data found for team {team_id}."
+
+    gw = team_data.get("gameweek", "Unknown")
+    active_chip = team_data.get("active_chip")
+    points = team_data.get("points")
+
+    lines = [f"Team {team_id} - Gameweek {gw}"]
+    if active_chip:
+        lines.append(f"Active Chip: {active_chip}")
+    if points:
+        lines.append(f"Gameweek Points: {points}")
+    lines.append("")
+
+    starters = [p for p in squad if p.get("multiplier", 0) > 0]
+    bench = [p for p in squad if p.get("multiplier", 0) == 0]
+
+    lines.append("Starting XI:")
+    for player in starters:
+        captain = " (C)" if player.get("is_captain") else ""
+        vice = " (VC)" if player.get("is_vice_captain") else ""
+        lines.append(f"  {player.get('player_name', 'Unknown')}{captain}{vice} - {player.get('total_points', 0)} pts")
+
+    lines.append("")
+    lines.append("Bench:")
+    for player in bench:
+        lines.append(f"  {player.get('player_name', 'Unknown')} - {player.get('total_points', 0)} pts")
+
+    return "\n".join(lines)
+
+
 # List of all available tools
-ALL_TOOLS = [math_add, get_player_stats]
+ALL_TOOLS = [math_add, get_player_stats, get_fpl_team]
