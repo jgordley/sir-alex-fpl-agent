@@ -23,9 +23,7 @@ class Settings(BaseModel):
         # Parse ALLOWED_USERS from comma-separated string
         allowed_users_str = os.getenv("ALLOWED_USERS", "")
         allowed_users = [
-            user.strip()
-            for user in allowed_users_str.split(",")
-            if user.strip()
+            user.strip() for user in allowed_users_str.split(",") if user.strip()
         ]
 
         return cls(
