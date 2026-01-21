@@ -130,6 +130,12 @@ def render_chat():
     # Display chat history
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
+            # Display tool calls if present (for assistant messages)
+            if message.get("tool_calls"):
+                with st.expander("Tool Calls", expanded=False):
+                    for tc in message["tool_calls"]:
+                        st.markdown(f"**{tc['name']}**")
+                        st.code(f"Arguments: {tc['args']}\nResult: {tc['result']}")
             st.markdown(message["content"])
 
     # Chat input
@@ -166,10 +172,17 @@ def render_chat():
 
                     st.markdown(response.content)
 
-                    # Add assistant response to history
-                    st.session_state.messages.append(
-                        {"role": "assistant", "content": response.content}
-                    )
+                    # Add assistant response to history (including tool calls)
+                    assistant_msg = {
+                        "role": "assistant",
+                        "content": response.content,
+                    }
+                    if response.tool_calls:
+                        assistant_msg["tool_calls"] = [
+                            {"name": tc.name, "args": tc.args, "result": tc.result}
+                            for tc in response.tool_calls
+                        ]
+                    st.session_state.messages.append(assistant_msg)
                 except Exception as e:
                     st.error(f"Error getting response: {str(e)}")
 

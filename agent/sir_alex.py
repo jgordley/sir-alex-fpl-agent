@@ -114,18 +114,44 @@ def get_conversation_history(
 
         messages = state.values.get("messages", [])
         history = []
+        pending_tool_calls = {}  # tool_call_id -> {name, args}
+
         for msg in messages:
-            if hasattr(msg, "type"):
-                if msg.type == "human":
-                    history.append({"role": "user", "content": msg.content})
-                elif msg.type == "ai" and msg.content:
-                    # Only include AI messages with actual content (not tool calls)
-                    if not (
-                        hasattr(msg, "tool_calls")
-                        and msg.tool_calls
-                        and not msg.content
-                    ):
-                        history.append({"role": "assistant", "content": msg.content})
+            if not hasattr(msg, "type"):
+                continue
+
+            if msg.type == "human":
+                history.append({"role": "user", "content": msg.content})
+
+            elif msg.type == "ai":
+                # Track tool calls for later matching with results
+                if hasattr(msg, "tool_calls") and msg.tool_calls:
+                    for tc in msg.tool_calls:
+                        tc_id = tc.get("id") or tc.get("tool_call_id")
+                        pending_tool_calls[tc_id] = {
+                            "name": tc["name"],
+                            "args": tc["args"],
+                            "result": "",
+                        }
+
+                # Only add AI messages with actual content
+                if msg.content:
+                    assistant_msg = {"role": "assistant", "content": msg.content}
+                    # Attach any completed tool calls
+                    completed_tools = [
+                        tc for tc in pending_tool_calls.values() if tc["result"]
+                    ]
+                    if completed_tools:
+                        assistant_msg["tool_calls"] = completed_tools
+                        pending_tool_calls = {}  # Reset for next turn
+                    history.append(assistant_msg)
+
+            elif msg.type == "tool":
+                # Match tool result to pending tool call
+                tc_id = getattr(msg, "tool_call_id", None)
+                if tc_id and tc_id in pending_tool_calls:
+                    pending_tool_calls[tc_id]["result"] = str(msg.content)
+
         return history
     except Exception:
         return []
