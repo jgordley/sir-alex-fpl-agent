@@ -3,6 +3,7 @@
 import streamlit as st
 
 from agent import run_agent, get_conversation_history
+from app.config import is_valid_user
 from app.constants import (
     AVAILABLE_MODELS,
     FPL_TEAM_ID_HELP,
@@ -143,6 +144,16 @@ def render_chat():
         # Check if unique ID is set
         if not st.session_state.unique_id:
             st.warning("Please enter your Unique ID in the sidebar to continue.")
+            return
+
+        # Check if session ID is set
+        if not st.session_state.session_id:
+            st.warning("Please enter a Session ID in the sidebar to continue.")
+            return
+
+        # Validate user ID against allowed users
+        if not is_valid_user(st.session_state.unique_id):
+            st.error("Invalid User ID. Please enter a valid ID to continue.")
             return
 
         # Add user message to history
