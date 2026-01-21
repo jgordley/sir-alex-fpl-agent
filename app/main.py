@@ -2,7 +2,7 @@
 
 import streamlit as st
 
-from app.chat import get_chat_response
+from agent import run_agent
 from app.constants import (
     AVAILABLE_MODELS,
     FPL_TEAM_ID_HELP,
@@ -113,17 +113,23 @@ def render_chat():
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
                 try:
-                    response = get_chat_response(
-                        messages=st.session_state.messages,
-                        model=st.session_state.selected_model,
-                        user_id=st.session_state.unique_id,
-                        fpl_team_id=st.session_state.fpl_team_id or None,
+                    response = run_agent(
+                        user_message=prompt,
+                        model_name=st.session_state.selected_model,
                     )
-                    st.markdown(response)
+
+                    # Display tool calls if any
+                    if response.tool_calls:
+                        with st.expander("Tool Calls", expanded=True):
+                            for tc in response.tool_calls:
+                                st.markdown(f"**{tc.name}**")
+                                st.code(f"Arguments: {tc.args}\nResult: {tc.result}")
+
+                    st.markdown(response.content)
 
                     # Add assistant response to history
                     st.session_state.messages.append(
-                        {"role": "assistant", "content": response}
+                        {"role": "assistant", "content": response.content}
                     )
                 except Exception as e:
                     st.error(f"Error getting response: {str(e)}")
