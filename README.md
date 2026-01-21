@@ -60,4 +60,12 @@ Integration tests use [AgentEvals](https://github.com/langchain-ai/agentevals) t
 
 ## Future Improvements/Discussion
 
-TBD
+For demo purposes...
+- Streamlit was used. In reality, we would need a proper frontend and backend API with something like FastAPI to handle invoking the agent, hosted on something like Fargate or AgentCore Runtime.
+- This repo isn't containerized with a proper entrypoint. I used Digital Ocean to host and pull directly from Github on pushes to Main, then build and run with commands I provided.
+- I didn't have time to instrument the agent and implement observability/monitoring, happy to talk lots more about this.
+- Postgres/DB storage would be great to add to this project. Things like team IDs to users, etc.
+- Caching is a great fit for this project as tool calls with similar player queries during the week can all be cached across users.
+- Small model usage wasn't tested thoroughly but works for happy cases. Would need to experiment/optimize around cost, accuracy, and latency for the query generation for long term memory and guardrails.
+- AgentCore Memory was created manually for one deployment. In the future, this should be created through CDK.
+... will keep thinking
