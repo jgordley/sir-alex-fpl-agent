@@ -238,9 +238,15 @@ async def get_league_leaders(category: str, limit: int = 10) -> list[dict]:
 
             def sort_key(p):
                 return p.get("goals_scored", 0) + p.get("assists", 0)
+
         else:
             # Handle string-type numeric fields
-            string_fields = {"points_per_game", "form", "selected_by_percent", "ict_index"}
+            string_fields = {
+                "points_per_game",
+                "form",
+                "selected_by_percent",
+                "ict_index",
+            }
             if category in string_fields:
 
                 def sort_key(p):
@@ -249,6 +255,7 @@ async def get_league_leaders(category: str, limit: int = 10) -> list[dict]:
                         return float(val) if val else 0.0
                     except (ValueError, TypeError):
                         return 0.0
+
             else:
 
                 def sort_key(p):

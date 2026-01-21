@@ -211,7 +211,9 @@ def get_league_leaders(category: str, limit: int = 10) -> str:
 
     # Column headers
     if category_key == "goals_and_assists":
-        lines.append(f"{'Rank':<5} {'Player':<15} {'Price':<7} {'G':<4} {'A':<4} {'G+A':<5}")
+        lines.append(
+            f"{'Rank':<5} {'Player':<15} {'Price':<7} {'G':<4} {'A':<4} {'G+A':<5}"
+        )
         lines.append("-" * 45)
     elif category_key == "goals_scored":
         lines.append(f"{'Rank':<5} {'Player':<15} {'Price':<7} {'Goals':<6}")
@@ -222,8 +224,14 @@ def get_league_leaders(category: str, limit: int = 10) -> str:
     elif category_key == "total_points":
         lines.append(f"{'Rank':<5} {'Player':<15} {'Price':<7} {'Points':<7}")
         lines.append("-" * 42)
-    elif category_key in ("expected_goals", "expected_assists", "expected_goal_involvements"):
-        lines.append(f"{'Rank':<5} {'Player':<15} {'Price':<7} {category_key.upper():<8}")
+    elif category_key in (
+        "expected_goals",
+        "expected_assists",
+        "expected_goal_involvements",
+    ):
+        lines.append(
+            f"{'Rank':<5} {'Player':<15} {'Price':<7} {category_key.upper():<8}"
+        )
         lines.append("-" * 42)
     else:
         lines.append(f"{'Rank':<5} {'Player':<15} {'Price':<7} {'Value':<10}")
@@ -236,14 +244,25 @@ def get_league_leaders(category: str, limit: int = 10) -> str:
         if category_key == "goals_and_assists":
             goals = player.get("goals_scored", 0)
             assists = player.get("assists", 0)
-            lines.append(f"{i:<5} {name:<15} {price:<7} {goals:<4} {assists:<4} {goals + assists:<5}")
+            lines.append(
+                f"{i:<5} {name:<15} {price:<7} {goals:<4} {assists:<4} {goals + assists:<5}"
+            )
         elif category_key == "goals_scored":
-            lines.append(f"{i:<5} {name:<15} {price:<7} {player.get('goals_scored', 0):<6}")
+            lines.append(
+                f"{i:<5} {name:<15} {price:<7} {player.get('goals_scored', 0):<6}"
+            )
         elif category_key == "assists":
             lines.append(f"{i:<5} {name:<15} {price:<7} {player.get('assists', 0):<8}")
         elif category_key == "total_points":
-            lines.append(f"{i:<5} {name:<15} {price:<7} {player.get('total_points', 0):<7}")
-        elif category_key in ("points_per_game", "form", "selected_by_percent", "ict_index"):
+            lines.append(
+                f"{i:<5} {name:<15} {price:<7} {player.get('total_points', 0):<7}"
+            )
+        elif category_key in (
+            "points_per_game",
+            "form",
+            "selected_by_percent",
+            "ict_index",
+        ):
             val = player.get(category_key, "0")
             lines.append(f"{i:<5} {name:<15} {price:<7} {val:<10}")
         elif category_key == "now_cost":
