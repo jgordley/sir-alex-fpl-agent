@@ -26,18 +26,55 @@ async def get_player(player_id: int) -> dict:
         return player
 
 
-async def get_player_by_name(name: str) -> dict | None:
-    """Search for a player by name."""
+async def get_player_by_name(name: str, season: str | None = None) -> dict | None:
+    """Search for a player by name, optionally for a specific season.
+
+    Args:
+        name: Player name to search for.
+        season: Optional season in format "YY/YY" (e.g., "24/25", "23/24").
+                If provided, returns stats from that historical season.
+                If None, returns current season stats.
+
+    Returns:
+        Player data dict or None if not found.
+    """
     async with aiohttp.ClientSession() as session:
         fpl = await _get_fpl_client(session)
         players = await fpl.get_players(return_json=True)
         name_lower = name.lower()
+
+        found_player = None
         for player in players:
             full_name = f"{player.get('first_name', '')} {player.get('second_name', '')}".lower()
             web_name = player.get('web_name', '').lower()
             if name_lower in full_name or name_lower in web_name:
-                return player
-        return None
+                found_player = player
+                break
+
+        if not found_player:
+            return None
+
+        if season:
+            # Fetch historical data and filter to requested season
+            player_summary = await fpl.get_player_summary(
+                found_player["id"], return_json=True
+            )
+            history_past = player_summary.get("history_past", [])
+
+            # Convert "YY/YY" to "20YY/YY" format used by API (e.g., "24/25" -> "2024/25")
+            season_full = f"20{season}"
+
+            for past_season in history_past:
+                if past_season.get("season_name") == season_full:
+                    found_player["season_data"] = past_season
+                    found_player["is_historical"] = True
+                    break
+            else:
+                # Season not found in history
+                found_player["season_data"] = None
+                found_player["is_historical"] = True
+
+        return found_player
 
 
 async def get_top_players(position: str | None = None, limit: int = 10) -> list[dict]:
@@ -131,9 +168,9 @@ def sync_get_player(player_id: int) -> dict:
     return asyncio.run(get_player(player_id))
 
 
-def sync_get_player_by_name(name: str) -> dict | None:
+def sync_get_player_by_name(name: str, season: str | None = None) -> dict | None:
     """Synchronous wrapper for get_player_by_name."""
-    return asyncio.run(get_player_by_name(name))
+    return asyncio.run(get_player_by_name(name, season))
 
 
 def sync_get_top_players(position: str | None = None, limit: int = 10) -> list[dict]:

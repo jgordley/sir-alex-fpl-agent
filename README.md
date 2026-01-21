@@ -22,6 +22,37 @@ Because this is demo app, proper auth was not implemented. You'll need to enter 
 
 Reach out to @jgordley for the URL.
 
+## Development
+
+### Setup
+```bash
+pip install -r requirements.txt
+```
+
+### Running the App
+```bash
+PYTHONPATH=. streamlit run app/main.py
+```
+
+### Running Tests
+
+**Unit tests only:**
+```bash
+pytest tests/unit -v
+```
+
+**Integration tests only** (requires `OPENROUTER_API_KEY`):
+```bash
+pytest tests/integration -v
+```
+
+**All tests:**
+```bash
+pytest -v
+```
+
+Integration tests use [AgentEvals](https://github.com/langchain-ai/agentevals) to validate agent trajectory and tool selection accuracy.
+
 ## Future Improvements/Discussion
 
 TBD
