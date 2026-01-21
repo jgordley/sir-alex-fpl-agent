@@ -21,7 +21,10 @@ class TestGuardrails:
         )
 
         # Should NOT contain the guardrail rejection message
-        assert "I'm Sir Alex Ferguson, and I'm here to help you with Fantasy Premier League" not in response.content
+        assert (
+            "I'm Sir Alex Ferguson, and I'm here to help you with Fantasy Premier League"
+            not in response.content
+        )
         # Should contain some actual response about Haaland or stats
         assert response.content is not None
         assert len(response.content) > 50  # Should be a substantive response
@@ -39,6 +42,10 @@ class TestGuardrails:
 
         # Should contain the guardrail rejection message
         assert "I'm Sir Alex Ferguson" in response.content
-        assert "Fantasy Premier League" in response.content or "football" in response.content.lower() or "soccer" in response.content.lower()
+        assert (
+            "Fantasy Premier League" in response.content
+            or "football" in response.content.lower()
+            or "soccer" in response.content.lower()
+        )
         # Should have no tool calls since we didn't invoke the agent
         assert len(response.tool_calls) == 0

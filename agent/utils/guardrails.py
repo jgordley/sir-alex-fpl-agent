@@ -53,7 +53,9 @@ Do not include any other text, explanation, or punctuation."""
             result = DO_NOT_ANSWER
         else:
             # Default to allowing if unclear
-            logger.warning(f"Guardrail check - Unclear classification: {classification}")
+            logger.warning(
+                f"Guardrail check - Unclear classification: {classification}"
+            )
             result = ON_SOCCER_TOPIC
 
         logger.info(f"Guardrail check - Final classification: {result}")
