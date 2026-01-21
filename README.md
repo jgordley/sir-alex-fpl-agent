@@ -1,5 +1,7 @@
 # Sir Alex (FPL Agent) Project
 
+![Sir Alex Demo](screenshots/demo-screenshot.png)
+
 This project is a simple agent for crafting the best Fantasy Premier League team of all time!
 
 ## Main Features
@@ -9,6 +11,9 @@ Sir Alex has access to three main tools to help you in your quest for a champion
 3. Memory of your preferences, for instance players you would never have on your team
 
 ## Architecture Breakdown
+
+![Sir Alex Agent Architecture](screenshots/sir-alex-architecture.png)
+
 Sir Alex was created using:
 - Streamlit (UI)
 - LangGraph (Agent framework)
