@@ -69,7 +69,9 @@ def create_agent(model_name: str = "anthropic/claude-haiku-4.5"):
     return graph.compile()
 
 
-def run_agent(user_message: str, model_name: str = "anthropic/claude-haiku-4.5") -> AgentResponse:
+def run_agent(
+    user_message: str, model_name: str = "anthropic/claude-haiku-4.5"
+) -> AgentResponse:
     """Run the agent with a user message.
 
     Args:

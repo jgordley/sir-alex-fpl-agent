@@ -45,7 +45,7 @@ async def get_player_by_name(name: str, season: str | None = None) -> dict | Non
         found_player = None
         for player in players:
             full_name = f"{player.get('first_name', '')} {player.get('second_name', '')}".lower()
-            web_name = player.get('web_name', '').lower()
+            web_name = player.get("web_name", "").lower()
             if name_lower in full_name or name_lower in web_name:
                 found_player = player
                 break
@@ -79,10 +79,15 @@ async def get_player_by_name(name: str, season: str | None = None) -> dict | Non
 async def get_top_players(position: str | None = None, limit: int = 10) -> list[dict]:
     """Get top players by total points, optionally filtered by position."""
     position_map = {
-        "goalkeeper": 1, "gk": 1,
-        "defender": 2, "def": 2,
-        "midfielder": 3, "mid": 3,
-        "forward": 4, "fwd": 4, "striker": 4,
+        "goalkeeper": 1,
+        "gk": 1,
+        "defender": 2,
+        "def": 2,
+        "midfielder": 3,
+        "mid": 3,
+        "forward": 4,
+        "fwd": 4,
+        "striker": 4,
     }
 
     async with aiohttp.ClientSession() as session:
@@ -94,7 +99,9 @@ async def get_top_players(position: str | None = None, limit: int = 10) -> list[
             if pos_id:
                 players = [p for p in players if p.get("element_type") == pos_id]
 
-        sorted_players = sorted(players, key=lambda x: x.get("total_points", 0), reverse=True)
+        sorted_players = sorted(
+            players, key=lambda x: x.get("total_points", 0), reverse=True
+        )
         return sorted_players[:limit]
 
 
@@ -140,13 +147,15 @@ async def get_user_team(team_id: int, gameweek: int | None = None) -> dict:
         for entry in team:
             player_id = entry.get("element")
             player_info = player_map.get(player_id, {})
-            enriched_team.append({
-                **entry,
-                "player_name": player_info.get("web_name", "Unknown"),
-                "team_name": player_info.get("team", "Unknown"),
-                "total_points": player_info.get("total_points", 0),
-                "now_cost": player_info.get("now_cost", 0),
-            })
+            enriched_team.append(
+                {
+                    **entry,
+                    "player_name": player_info.get("web_name", "Unknown"),
+                    "team_name": player_info.get("team", "Unknown"),
+                    "total_points": player_info.get("total_points", 0),
+                    "now_cost": player_info.get("now_cost", 0),
+                }
+            )
 
         return {
             "team": enriched_team,

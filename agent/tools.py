@@ -4,7 +4,6 @@ from langchain_core.tools import tool
 
 from app.fpl_service import sync_get_player_by_name, sync_get_user_team
 
-
 POSITION_MAP = {1: "Goalkeeper", 2: "Defender", 3: "Midfielder", 4: "Forward"}
 
 
@@ -129,12 +128,16 @@ def get_fpl_team(team_id: int, gameweek: int | None = None) -> str:
     for player in starters:
         captain = " (C)" if player.get("is_captain") else ""
         vice = " (VC)" if player.get("is_vice_captain") else ""
-        lines.append(f"  {player.get('player_name', 'Unknown')}{captain}{vice} - {player.get('total_points', 0)} pts")
+        lines.append(
+            f"  {player.get('player_name', 'Unknown')}{captain}{vice} - {player.get('total_points', 0)} pts"
+        )
 
     lines.append("")
     lines.append("Bench:")
     for player in bench:
-        lines.append(f"  {player.get('player_name', 'Unknown')} - {player.get('total_points', 0)} pts")
+        lines.append(
+            f"  {player.get('player_name', 'Unknown')} - {player.get('total_points', 0)} pts"
+        )
 
     return "\n".join(lines)
 

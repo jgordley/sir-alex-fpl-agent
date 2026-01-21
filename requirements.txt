@@ -11,3 +11,6 @@ langchain-openai>=0.3.0
 pytest>=8.0.0
 pytest-asyncio>=0.23.0
 agentevals>=0.0.9
+
+# Linting
+black>=24.0.0

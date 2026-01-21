@@ -24,15 +24,21 @@ class TestPlayerSearchToolSelection:
             tool_args_match_mode="exact",
         )
 
-    def test_historical_season_query_includes_season_arg(self, agent, trajectory_evaluator):
+    def test_historical_season_query_includes_season_arg(
+        self, agent, trajectory_evaluator
+    ):
         """Test that asking about a specific season includes the season argument.
 
         When user asks "How did Haaland do in the 24/25 season?", the agent should call
         get_player_stats with season="24/25".
         """
-        result = agent.invoke({
-            "messages": [HumanMessage(content="How did Haaland do in the 24/25 season?")]
-        })
+        result = agent.invoke(
+            {
+                "messages": [
+                    HumanMessage(content="How did Haaland do in the 24/25 season?")
+                ]
+            }
+        )
 
         # Define expected trajectory - we expect the tool to be called with season arg
         reference_trajectory = [
@@ -67,9 +73,13 @@ class TestPlayerSearchToolSelection:
         When user asks "How is Haaland's current performance?", the agent should call
         get_player_stats without a season argument.
         """
-        result = agent.invoke({
-            "messages": [HumanMessage(content="How is Haaland's current performance?")]
-        })
+        result = agent.invoke(
+            {
+                "messages": [
+                    HumanMessage(content="How is Haaland's current performance?")
+                ]
+            }
+        )
 
         # Define expected trajectory - we expect the tool to be called WITHOUT season arg
         reference_trajectory = [
@@ -122,9 +132,9 @@ class TestTeamLookupToolSelection:
         When user asks "Show me team 7704194 for gameweek 20", the agent should call
         get_fpl_team with team_id=7704194 and gameweek=20.
         """
-        result = agent.invoke({
-            "messages": [HumanMessage(content="Show me team 7704194 for gameweek 20")]
-        })
+        result = agent.invoke(
+            {"messages": [HumanMessage(content="Show me team 7704194 for gameweek 20")]}
+        )
 
         reference_trajectory = [
             HumanMessage(content="Show me team 7704194 for gameweek 20"),
