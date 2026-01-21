@@ -16,6 +16,9 @@ from agent.utils import (
     build_system_prompt,
     create_agent_node,
     create_tool_node,
+    classify_user_query,
+    ON_SOCCER_TOPIC,
+    DO_NOT_ANSWER,
 )
 
 # Configure logging
@@ -144,13 +147,25 @@ def run_agent(
     Returns:
         AgentResponse with content and tool calls.
     """
-    checkpointer = get_checkpointer()
-    agent = create_agent(model_name, checkpointer=checkpointer)
+    # Guardrail: Check if the query is related to soccer/FPL
+    classification = classify_user_query(user_message)
+    if classification == DO_NOT_ANSWER:
+        return AgentResponse(
+            content="I'm Sir Alex Ferguson, and I'm here to help you with Fantasy Premier League and football matters. Please ask me something related to soccer, the Premier League, or FPL!",
+            tool_calls=[],
+        )
 
-    # Build config for memory if actor_id and session_id are provided
+    # Only use checkpointer if actor_id and session_id are provided
+    checkpointer = None
     config = None
     existing_message_count = 0
-    if checkpointer and actor_id and session_id:
+    if actor_id and session_id:
+        checkpointer = get_checkpointer()
+
+    agent = create_agent(model_name, checkpointer=checkpointer)
+
+    # Build config for memory if checkpointer is available
+    if checkpointer:
         config = {
             "configurable": {
                 "thread_id": session_id,

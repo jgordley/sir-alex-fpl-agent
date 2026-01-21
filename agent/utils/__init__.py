@@ -10,6 +10,11 @@ from agent.utils.memory import (
 from agent.utils.prompts import build_system_prompt
 from agent.utils.nodes import create_agent_node, create_tool_node
 from agent.utils.tools import ALL_TOOLS
+from agent.utils.guardrails import (
+    classify_user_query,
+    ON_SOCCER_TOPIC,
+    DO_NOT_ANSWER,
+)
 
 __all__ = [
     "AgentState",
@@ -23,4 +28,7 @@ __all__ = [
     "create_agent_node",
     "create_tool_node",
     "ALL_TOOLS",
+    "classify_user_query",
+    "ON_SOCCER_TOPIC",
+    "DO_NOT_ANSWER",
 ]
