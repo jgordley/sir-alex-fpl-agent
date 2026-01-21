@@ -24,6 +24,9 @@ wheels/
 .installed.cfg
 *.egg
 
+# Python version from pyenv
+.python-version
+
 # PyInstaller
 *.manifest
 *.spec
