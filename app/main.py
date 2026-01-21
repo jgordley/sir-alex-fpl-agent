@@ -2,12 +2,14 @@
 
 import streamlit as st
 
-from agent import run_agent
+from agent import run_agent, get_conversation_history
 from app.constants import (
     AVAILABLE_MODELS,
     FPL_TEAM_ID_HELP,
     FPL_TEAM_ID_LABEL,
     MODEL_LABEL,
+    SESSION_ID_HELP,
+    SESSION_ID_LABEL,
     SIDEBAR_TITLE,
     UNIQUE_ID_HELP,
     UNIQUE_ID_LABEL,
@@ -28,10 +30,34 @@ def init_session_state():
         st.session_state.messages = []
     if "unique_id" not in st.session_state:
         st.session_state.unique_id = ""
+    if "session_id" not in st.session_state:
+        st.session_state.session_id = ""
     if "fpl_team_id" not in st.session_state:
         st.session_state.fpl_team_id = ""
     if "selected_model" not in st.session_state:
         st.session_state.selected_model = AVAILABLE_MODELS[0][1]
+    if "_last_session_key" not in st.session_state:
+        st.session_state._last_session_key = ""
+
+
+def load_conversation_from_memory():
+    """Load conversation history from AgentCore memory if session changed."""
+    current_key = f"{st.session_state.unique_id}:{st.session_state.session_id}"
+
+    # Check if session changed
+    if current_key != st.session_state._last_session_key:
+        st.session_state._last_session_key = current_key
+
+        # Load history from memory if we have both IDs
+        if st.session_state.unique_id and st.session_state.session_id:
+            history = get_conversation_history(
+                model_name=st.session_state.selected_model,
+                actor_id=st.session_state.unique_id,
+                session_id=st.session_state.session_id,
+            )
+            st.session_state.messages = history
+        else:
+            st.session_state.messages = []
 
 
 def render_sidebar():
@@ -47,6 +73,15 @@ def render_sidebar():
             placeholder="Enter your unique ID",
         )
         st.session_state.unique_id = unique_id
+
+        # Session ID input
+        session_id = st.text_input(
+            SESSION_ID_LABEL,
+            value=st.session_state.session_id,
+            help=SESSION_ID_HELP,
+            placeholder="e.g., session-1",
+        )
+        st.session_state.session_id = session_id
 
         # Model selection dropdown
         model_names = [model[0] for model in AVAILABLE_MODELS]
@@ -77,6 +112,8 @@ def render_sidebar():
         # Display current settings
         if unique_id:
             st.caption(f"Logged in as: **{unique_id}**")
+        if session_id:
+            st.caption(f"Session: **{session_id}**")
         if fpl_team_id:
             st.caption(f"FPL Team: **{fpl_team_id}**")
         st.caption(f"Model: **{selected_name}**")
@@ -116,6 +153,8 @@ def render_chat():
                     response = run_agent(
                         user_message=prompt,
                         model_name=st.session_state.selected_model,
+                        actor_id=st.session_state.unique_id or None,
+                        session_id=st.session_state.session_id or None,
                     )
 
                     # Display tool calls if any
@@ -139,6 +178,7 @@ def main():
     """Main application entry point."""
     init_session_state()
     render_sidebar()
+    load_conversation_from_memory()
     render_chat()
 
 

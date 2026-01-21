@@ -4,8 +4,9 @@ fpl>=0.6.0
 aiohttp>=3.9.0
 
 # LangGraph
-langgraph==0.2.62
+langgraph==1.0.6
 langchain-openai>=0.3.0
+langgraph-checkpoint-aws==1.0.3
 
 # Testing
 pytest>=8.0.0

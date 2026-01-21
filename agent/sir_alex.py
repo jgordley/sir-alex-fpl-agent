@@ -7,9 +7,19 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph_checkpoint_aws import AgentCoreMemorySaver
 from pydantic import BaseModel, Field
 
 from agent.tools import ALL_TOOLS
+
+
+def get_checkpointer():
+    """Get the AgentCore Memory checkpointer if configured."""
+    memory_id = os.getenv("AGENTCORE_MEMORY_ID")
+    if not memory_id:
+        return None
+    region = os.getenv("AWS_DEFAULT_REGION", "us-west-2")
+    return AgentCoreMemorySaver(memory_id, region_name=region)
 
 
 class ToolCall(BaseModel):
@@ -33,11 +43,12 @@ class AgentState(TypedDict):
     messages: Annotated[list, add_messages]
 
 
-def create_agent(model_name: str = "anthropic/claude-haiku-4.5"):
+def create_agent(model_name: str = "anthropic/claude-haiku-4.5", checkpointer=None):
     """Create the Sir Alex agent graph.
 
     Args:
         model_name: The model to use via OpenRouter.
+        checkpointer: Optional checkpointer for state persistence.
 
     Returns:
         Compiled LangGraph agent.
@@ -66,35 +77,111 @@ def create_agent(model_name: str = "anthropic/claude-haiku-4.5"):
     graph.add_conditional_edges("agent", tools_condition)
     graph.add_edge("tools", "agent")
 
-    return graph.compile()
+    return graph.compile(checkpointer=checkpointer)
+
+
+def get_conversation_history(
+    model_name: str = "anthropic/claude-haiku-4.5",
+    actor_id: str | None = None,
+    session_id: str | None = None,
+) -> list[dict]:
+    """Load conversation history from AgentCore memory.
+
+    Args:
+        model_name: The model to use via OpenRouter.
+        actor_id: User/actor identifier for memory persistence.
+        session_id: Session/thread identifier for conversation continuity.
+
+    Returns:
+        List of message dicts with 'role' and 'content' keys.
+    """
+    checkpointer = get_checkpointer()
+    if not checkpointer or not actor_id or not session_id:
+        return []
+
+    agent = create_agent(model_name, checkpointer=checkpointer)
+    config = {
+        "configurable": {
+            "thread_id": session_id,
+            "actor_id": actor_id,
+        }
+    }
+
+    try:
+        state = agent.get_state(config)
+        if not state or not state.values:
+            return []
+
+        messages = state.values.get("messages", [])
+        history = []
+        for msg in messages:
+            if hasattr(msg, "type"):
+                if msg.type == "human":
+                    history.append({"role": "user", "content": msg.content})
+                elif msg.type == "ai" and msg.content:
+                    # Only include AI messages with actual content (not tool calls)
+                    if not (
+                        hasattr(msg, "tool_calls")
+                        and msg.tool_calls
+                        and not msg.content
+                    ):
+                        history.append({"role": "assistant", "content": msg.content})
+        return history
+    except Exception:
+        return []
 
 
 def run_agent(
-    user_message: str, model_name: str = "anthropic/claude-haiku-4.5"
+    user_message: str,
+    model_name: str = "anthropic/claude-haiku-4.5",
+    actor_id: str | None = None,
+    session_id: str | None = None,
 ) -> AgentResponse:
     """Run the agent with a user message.
 
     Args:
         user_message: The user's input message.
         model_name: The model to use via OpenRouter.
+        actor_id: User/actor identifier for memory persistence.
+        session_id: Session/thread identifier for conversation continuity.
 
     Returns:
         AgentResponse with content and tool calls.
     """
-    agent = create_agent(model_name)
+    checkpointer = get_checkpointer()
+    agent = create_agent(model_name, checkpointer=checkpointer)
 
-    result = agent.invoke({"messages": [("user", user_message)]})
+    # Build config for memory if actor_id and session_id are provided
+    config = None
+    existing_message_count = 0
+    if checkpointer and actor_id and session_id:
+        config = {
+            "configurable": {
+                "thread_id": session_id,
+                "actor_id": actor_id,
+            }
+        }
+        # Get existing message count before invoke
+        try:
+            state = agent.get_state(config)
+            if state and state.values:
+                existing_message_count = len(state.values.get("messages", []))
+        except Exception:
+            pass
 
-    # Extract tool calls and their results
+    result = agent.invoke({"messages": [("user", user_message)]}, config=config)
+
+    # Extract tool calls and their results from NEW messages only
     tool_calls = []
     messages = result["messages"]
+    new_messages = messages[existing_message_count:]  # Only process new messages
 
-    for i, message in enumerate(messages):
+    for i, message in enumerate(new_messages):
         if hasattr(message, "tool_calls") and message.tool_calls:
             for tc in message.tool_calls:
                 # Find the corresponding tool result
                 tool_result = ""
-                for next_msg in messages[i + 1 :]:
+                for next_msg in new_messages[i + 1 :]:
                     if hasattr(next_msg, "name") and next_msg.name == tc["name"]:
                         tool_result = str(next_msg.content)
                         break
@@ -107,9 +194,9 @@ def run_agent(
                     )
                 )
 
-    # Get final response
+    # Get final response from new messages
     final_content = "I couldn't generate a response."
-    for message in reversed(messages):
+    for message in reversed(new_messages):
         if hasattr(message, "content") and message.content:
             if not hasattr(message, "tool_calls") or not message.tool_calls:
                 final_content = message.content

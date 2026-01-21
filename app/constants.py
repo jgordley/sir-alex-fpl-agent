@@ -34,6 +34,10 @@ Then ask me anything about FPL - transfers, captaincy picks, team selection, or 
 SIDEBAR_TITLE = "Settings"
 UNIQUE_ID_LABEL = "Unique ID"
 UNIQUE_ID_HELP = "Enter your unique identifier to save your preferences"
+SESSION_ID_LABEL = "Session ID"
+SESSION_ID_HELP = (
+    "Enter a session ID to continue a previous conversation or start a new one"
+)
 FPL_TEAM_ID_LABEL = "FPL Team ID (Optional)"
 FPL_TEAM_ID_HELP = "Find this in your FPL team URL: https://fantasy.premierleague.com/entry/TEAM_ID/event/1"
 MODEL_LABEL = "Select Model"

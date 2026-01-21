@@ -105,6 +105,36 @@ OPENROUTER_API_KEY    # Required - LLM access
 PYTHONPATH            # Required for imports (/workspace on DO)
 FPL_EMAIL             # Optional - for user team data
 FPL_PASSWORD          # Optional - for user team data
+
+# AWS/AgentCore Memory
+AWS_ACCESS_KEY_ID     # Required for AgentCore Memory
+AWS_SECRET_ACCESS_KEY # Required for AgentCore Memory
+AWS_DEFAULT_REGION    # us-west-2
+AGENTCORE_MEMORY_ID   # AgentCore Memory resource ID
+```
+
+## AgentCore Memory Integration
+Uses `langgraph-checkpoint-aws` for conversation persistence via AWS Bedrock AgentCore Memory.
+
+### Key Concepts
+- **Memory ID**: Top-level AgentCore Memory resource (from `AGENTCORE_MEMORY_ID`)
+- **Actor ID**: User identifier (unique_id from Streamlit sidebar)
+- **Thread ID**: Session identifier (session_id from Streamlit sidebar)
+
+### How It Works
+1. `AgentCoreMemorySaver` checkpointer is initialized with Memory ID and region
+2. Each `agent.invoke()` call passes config with `actor_id` and `thread_id`
+3. Conversation state is persisted to AgentCore Memory
+4. Same actor_id + thread_id = continues previous conversation
+5. Same actor_id + new thread_id = starts fresh conversation
+
+### Code Structure
+```python
+from langgraph_checkpoint_aws import AgentCoreMemorySaver
+
+checkpointer = AgentCoreMemorySaver(memory_id, region_name="us-west-2")
+agent = create_agent(model_name, checkpointer=checkpointer)
+agent.invoke(inputs, config={"configurable": {"thread_id": session_id, "actor_id": actor_id}})
 ```
 
 ## Conventions
@@ -116,9 +146,9 @@ FPL_PASSWORD          # Optional - for user team data
 ## Current Tools
 1. `math_add(x, y)` - Dummy tool for testing
 2. `get_player_stats(player_name, season?)` - Player lookup with optional historical season
+3. `get_fpl_team(team_id, gameweek?)` - FPL team squad lookup
 
 ## Next Steps (Planned Features)
-- More FPL tools: top players, fixtures, user team lookup
-- Bedrock AgentCore Memory integration
+- More FPL tools: top players, fixtures
 - Transfer news monitoring
-- User preference storage
+- User preference storage (via AgentCore Memory strategies)
