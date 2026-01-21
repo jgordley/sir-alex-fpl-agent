@@ -1,19 +1,18 @@
 """Sir Alex LangGraph Agent."""
 
 import os
-from dataclasses import dataclass, field
 from typing import TypedDict, Annotated
 
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
+from pydantic import BaseModel, Field
 
 from agent.tools import ALL_TOOLS
 
 
-@dataclass
-class ToolCall:
+class ToolCall(BaseModel):
     """Represents a tool call made by the agent."""
 
     name: str
@@ -21,12 +20,11 @@ class ToolCall:
     result: str
 
 
-@dataclass
-class AgentResponse:
+class AgentResponse(BaseModel):
     """Response from the agent including tool calls."""
 
     content: str
-    tool_calls: list[ToolCall] = field(default_factory=list)
+    tool_calls: list[ToolCall] = Field(default_factory=list)
 
 
 class AgentState(TypedDict):

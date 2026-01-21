@@ -1,11 +1,11 @@
 """Configuration settings for Sir Alex FPL Agent."""
 
 import os
-from dataclasses import dataclass
+
+from pydantic import BaseModel
 
 
-@dataclass
-class Settings:
+class Settings(BaseModel):
     """Application settings loaded from environment variables."""
 
     openrouter_api_key: str
