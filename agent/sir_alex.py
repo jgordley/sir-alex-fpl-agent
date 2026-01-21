@@ -1,6 +1,7 @@
 """Sir Alex LangGraph Agent."""
 
 import os
+from datetime import datetime
 from typing import TypedDict, Annotated
 
 from langchain_openai import ChatOpenAI
@@ -11,6 +12,50 @@ from langgraph_checkpoint_aws import AgentCoreMemorySaver
 from pydantic import BaseModel, Field
 
 from agent.tools import ALL_TOOLS
+from app.constants import SYSTEM_PROMPT
+from app.fpl_service import sync_get_current_gameweek
+
+
+def build_system_prompt(fpl_team_id: str | None = None) -> str:
+    """Build the dynamic system prompt with current context.
+
+    Args:
+        fpl_team_id: Optional FPL team ID for personalized advice.
+
+    Returns:
+        Complete system prompt with date, gameweek, and user context.
+    """
+    # Get current date/time
+    now = datetime.now()
+    date_str = now.strftime("%A, %B %d, %Y at %I:%M %p")
+
+    # Get current gameweek
+    try:
+        gw_info = sync_get_current_gameweek()
+        gameweek = gw_info.get("id", "Unknown")
+        gw_name = gw_info.get("name", f"Gameweek {gameweek}")
+        gw_deadline = gw_info.get("deadline_time", "")
+        gameweek_str = f"Current Gameweek: {gw_name}"
+        if gw_deadline:
+            gameweek_str += f" (Deadline: {gw_deadline})"
+    except Exception:
+        gameweek_str = "Current Gameweek: Unknown"
+
+    # Build context section
+    context_parts = [
+        f"Current Date/Time: {date_str}",
+        gameweek_str,
+    ]
+
+    if fpl_team_id:
+        context_parts.append(f"User's FPL Team ID: {fpl_team_id}")
+
+    context = "\n".join(context_parts)
+
+    return f"""{SYSTEM_PROMPT}
+
+--- Current Context ---
+{context}"""
 
 
 def get_checkpointer():
@@ -162,6 +207,7 @@ def run_agent(
     model_name: str = "anthropic/claude-haiku-4.5",
     actor_id: str | None = None,
     session_id: str | None = None,
+    fpl_team_id: str | None = None,
 ) -> AgentResponse:
     """Run the agent with a user message.
 
@@ -170,6 +216,7 @@ def run_agent(
         model_name: The model to use via OpenRouter.
         actor_id: User/actor identifier for memory persistence.
         session_id: Session/thread identifier for conversation continuity.
+        fpl_team_id: Optional FPL team ID for personalized context.
 
     Returns:
         AgentResponse with content and tool calls.
@@ -195,7 +242,16 @@ def run_agent(
         except Exception:
             pass
 
-    result = agent.invoke({"messages": [("user", user_message)]}, config=config)
+    # Build system prompt with current context
+    system_prompt = build_system_prompt(fpl_team_id=fpl_team_id)
+
+    # Include system message and user message
+    messages = [
+        ("system", system_prompt),
+        ("user", user_message),
+    ]
+
+    result = agent.invoke({"messages": messages}, config=config)
 
     # Extract tool calls and their results from NEW messages only
     tool_calls = []

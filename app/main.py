@@ -161,6 +161,7 @@ def render_chat():
                         model_name=st.session_state.selected_model,
                         actor_id=st.session_state.unique_id or None,
                         session_id=st.session_state.session_id or None,
+                        fpl_team_id=st.session_state.fpl_team_id or None,
                     )
 
                     # Display tool calls if any
