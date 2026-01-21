@@ -221,10 +221,14 @@ def run_agent(
     for i, message in enumerate(new_messages):
         if hasattr(message, "tool_calls") and message.tool_calls:
             for tc in message.tool_calls:
-                # Find the corresponding tool result
+                # Find the corresponding tool result by tool_call_id
                 tool_result = ""
+                tc_id = tc.get("id")
                 for next_msg in new_messages[i + 1 :]:
-                    if hasattr(next_msg, "name") and next_msg.name == tc["name"]:
+                    if (
+                        hasattr(next_msg, "tool_call_id")
+                        and next_msg.tool_call_id == tc_id
+                    ):
                         tool_result = str(next_msg.content)
                         break
 

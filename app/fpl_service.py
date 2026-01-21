@@ -202,6 +202,62 @@ async def get_teams() -> list[dict]:
         return teams
 
 
+async def get_league_leaders(category: str, limit: int = 10) -> list[dict]:
+    """Get top players in the league for a specific statistical category.
+
+    Args:
+        category: The stat category to rank by. Valid options:
+            - goals_scored: Total goals
+            - assists: Total assists
+            - goals_and_assists: Combined goals + assists
+            - total_points: FPL points
+            - minutes: Minutes played
+            - clean_sheets: Clean sheets (GK/DEF)
+            - saves: Saves (GK only)
+            - bonus: Bonus points
+            - bps: Bonus points system score
+            - ict_index: ICT index
+            - expected_goals: xG
+            - expected_assists: xA
+            - expected_goal_involvements: xGI
+            - points_per_game: Points per game (as float string)
+            - form: Current form (as float string)
+            - selected_by_percent: Ownership % (as float string)
+            - now_cost: Current price
+        limit: Number of players to return (default 10).
+
+    Returns:
+        List of player dicts sorted by the category, descending.
+    """
+    async with aiohttp.ClientSession() as session:
+        fpl = await _get_fpl_client(session)
+        players = await fpl.get_players(return_json=True)
+
+        # Handle special combined category
+        if category == "goals_and_assists":
+
+            def sort_key(p):
+                return p.get("goals_scored", 0) + p.get("assists", 0)
+        else:
+            # Handle string-type numeric fields
+            string_fields = {"points_per_game", "form", "selected_by_percent", "ict_index"}
+            if category in string_fields:
+
+                def sort_key(p):
+                    val = p.get(category, "0")
+                    try:
+                        return float(val) if val else 0.0
+                    except (ValueError, TypeError):
+                        return 0.0
+            else:
+
+                def sort_key(p):
+                    return p.get(category, 0)
+
+        sorted_players = sorted(players, key=sort_key, reverse=True)
+        return sorted_players[:limit]
+
+
 # Synchronous wrappers for use in Streamlit
 def sync_get_player(player_id: int) -> dict:
     """Synchronous wrapper for get_player."""
@@ -241,3 +297,8 @@ def sync_get_fixtures(gameweek: int | None = None) -> list[dict]:
 def sync_get_teams() -> list[dict]:
     """Synchronous wrapper for get_teams."""
     return asyncio.run(get_teams())
+
+
+def sync_get_league_leaders(category: str, limit: int = 10) -> list[dict]:
+    """Synchronous wrapper for get_league_leaders."""
+    return asyncio.run(get_league_leaders(category, limit))
