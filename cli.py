@@ -50,9 +50,7 @@ def _disable_sigil_if_requested():
     """Disable OTel/Sigil by setting env vars before agent module import."""
     if os.getenv("SIGIL_DISABLED", "").strip() in ("1", "true", "yes"):
         os.environ.setdefault("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:1")
-        os.environ.setdefault(
-            "SIGIL_GENERATION_ENDPOINT", "http://localhost:1/noop"
-        )
+        os.environ.setdefault("SIGIL_GENERATION_ENDPOINT", "http://localhost:1/noop")
 
 
 def build_llm(model_name: str):
@@ -189,9 +187,7 @@ def main():
     thread_id = args.thread_id or str(uuid.uuid4())
 
     if args.conversation:
-        results = run_conversation(
-            args.conversation, args.model, args.team_id
-        )
+        results = run_conversation(args.conversation, args.model, args.team_id)
         output = {"conversation": results, "turns": len(results)}
     else:
         message = args.message
