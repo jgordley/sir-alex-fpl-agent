@@ -1,6 +1,8 @@
 """Sir Alex LangGraph Agent - Graph construction and execution."""
 
 import logging
+import os
+from typing import Any
 
 from langchain_core.messages import HumanMessage, AIMessage
 from langgraph.graph import StateGraph, START
@@ -25,8 +27,65 @@ from agent.utils import (
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
+sigil_client = None
 
-def create_agent(model_name: str = "anthropic/claude-haiku-4.5", checkpointer=None):
+
+def _sigil_disabled() -> bool:
+    return os.getenv("SIGIL_DISABLED", "").strip().lower() in ("1", "true", "yes")
+
+
+def _get_sigil_client():
+    global sigil_client
+    if sigil_client is None:
+        from sigil_sdk import Client
+
+        sigil_client = Client()
+    return sigil_client
+
+
+def _with_sigil_config(
+    config: dict | None,
+    *,
+    user_message: str,
+    model_name: str,
+    actor_id: str | None,
+    session_id: str | None,
+) -> dict | None:
+    if _sigil_disabled():
+        return config
+
+    try:
+        from sigil_sdk_langgraph import with_sigil_langgraph_callbacks
+
+        title = " ".join(user_message.split())[:120] or "Sir Alex FPL turn"
+        metadata = {
+            "sir_alex.model_name": model_name,
+        }
+        if actor_id:
+            metadata["sir_alex.actor_id"] = actor_id
+        if session_id:
+            metadata["sir_alex.session_id"] = session_id
+
+        return with_sigil_langgraph_callbacks(
+            config,
+            client=_get_sigil_client(),
+            provider_resolver="auto",
+            agent_name=os.getenv("SIGIL_AGENT_NAME", "sir-alex-fpl"),
+            agent_version=os.getenv("SIGIL_AGENT_VERSION", "1.0.0"),
+            capture_workflow_steps=True,
+            conversation_title=title,
+            extra_metadata=metadata,
+        )
+    except Exception as exc:
+        logger.warning("Sigil LangGraph instrumentation disabled for this run: %s", exc)
+        return config
+
+
+def create_agent(
+    model_name: str = "anthropic/claude-haiku-4.5",
+    checkpointer=None,
+    llm: Any | None = None,
+):
     """Create the Sir Alex agent graph.
 
     Args:
@@ -36,7 +95,7 @@ def create_agent(model_name: str = "anthropic/claude-haiku-4.5", checkpointer=No
     Returns:
         Compiled LangGraph agent.
     """
-    agent_node = create_agent_node(model_name)
+    agent_node = create_agent_node(model_name, llm=llm)
     tool_node = create_tool_node()
 
     graph = StateGraph(AgentState)
@@ -133,7 +192,9 @@ def run_agent(
     model_name: str = "anthropic/claude-haiku-4.5",
     actor_id: str | None = None,
     session_id: str | None = None,
+    thread_id: str | None = None,
     fpl_team_id: str | None = None,
+    llm: Any | None = None,
 ) -> AgentResponse:
     """Run the agent with a user message.
 
@@ -147,6 +208,9 @@ def run_agent(
     Returns:
         AgentResponse with content and tool calls.
     """
+    if session_id is None:
+        session_id = thread_id
+
     # Guardrail: Check if the query is related to soccer/FPL
     classification = classify_user_query(user_message)
     if classification == DO_NOT_ANSWER:
@@ -155,23 +219,24 @@ def run_agent(
             tool_calls=[],
         )
 
+    configurable = {}
+    if session_id:
+        configurable["thread_id"] = session_id
+    if actor_id:
+        configurable["actor_id"] = actor_id
+
+    config = {"configurable": configurable} if configurable else None
+
     # Only use checkpointer if actor_id and session_id are provided
     checkpointer = None
-    config = None
     existing_message_count = 0
     if actor_id and session_id:
         checkpointer = get_checkpointer()
 
-    agent = create_agent(model_name, checkpointer=checkpointer)
+    agent = create_agent(model_name, checkpointer=checkpointer, llm=llm)
 
     # Build config for memory if checkpointer is available
     if checkpointer:
-        config = {
-            "configurable": {
-                "thread_id": session_id,
-                "actor_id": actor_id,
-            }
-        }
         # Get existing message count before invoke
         try:
             state = agent.get_state(config)
@@ -211,6 +276,13 @@ def run_agent(
             message=HumanMessage(content=user_message),
         )
 
+    config = _with_sigil_config(
+        config,
+        user_message=user_message,
+        model_name=model_name,
+        actor_id=actor_id,
+        session_id=session_id,
+    )
     result = agent.invoke({"messages": messages}, config=config)
 
     # Extract tool calls and their results from NEW messages only

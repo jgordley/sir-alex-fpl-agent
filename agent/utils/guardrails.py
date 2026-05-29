@@ -23,9 +23,14 @@ def classify_user_query(user_message: str) -> str:
         ON_SOCCER_TOPIC if the query is about soccer/FPL, DO_NOT_ANSWER otherwise.
     """
     model_id = os.getenv("CONVERSATION_CLASSIFIER_MODEL_ID", "mistralai/ministral-8b")
+    api_key = os.getenv("OPENROUTER_API_KEY")
+    if not api_key:
+        logger.info("Guardrail check skipped - OPENROUTER_API_KEY is not configured")
+        return ON_SOCCER_TOPIC
+
     llm = ChatOpenAI(
         model=model_id,
-        openai_api_key=os.getenv("OPENROUTER_API_KEY"),
+        openai_api_key=api_key,
         openai_api_base="https://openrouter.ai/api/v1",
     )
 
