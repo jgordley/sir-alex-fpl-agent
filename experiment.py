@@ -228,7 +228,7 @@ def _make_llm_score_judge(
 ):
     """Build a single-score LLM judge scorer."""
 
-    judge_llm = ChatAnthropic(model=MODEL, temperature=0)
+    judge_llm = ChatAnthropic(model=MODEL)
 
     def judge(item: DatasetItem, result: TargetResult) -> list[ScoreOutput]:
         prompt = (
@@ -364,7 +364,7 @@ def main() -> None:
 
     client = build_client()
     # Reuse the existing compiled agent, but drive it with an Anthropic model.
-    agent = create_agent(MODEL, llm=ChatAnthropic(model=MODEL, temperature=0))
+    agent = create_agent(MODEL, llm=ChatAnthropic(model=MODEL))
     run_id = os.getenv("RUN_ID", f"sir-alex-fpl-{int(time.time())}")
     _print_run_targets(run_id)
 
