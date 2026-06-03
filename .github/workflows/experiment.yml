@@ -1,0 +1,66 @@
+name: Experiment
+
+# Runs the Sir Alex FPL Sigil experiment and fails CI if the pass rate drops
+# below MIN_PASS_RATE. The runner (experiment.py) enforces the threshold itself
+# via its exit code, so this workflow just supplies config + secrets.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      min_pass_rate:
+        description: "Minimum pass rate (0-1) required to pass"
+        required: false
+        default: "0.5"
+
+# Don't burn API budget on superseded runs of the same ref.
+concurrency:
+  group: experiment-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  experiment:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run experiment (fails if pass rate < MIN_PASS_RATE)
+        env:
+          # Threshold the runner enforces; defaults to 0.5 for push/PR events.
+          MIN_PASS_RATE: ${{ github.event.inputs.min_pass_rate || '0.5' }}
+          # Stable run id so re-runs of the same workflow run are idempotent in Sigil.
+          RUN_ID: sir-alex-fpl-${{ github.run_id }}-${{ github.run_attempt }}
+
+          # --- Model (drives both the agent and the LLM judges) ---
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          AGENT_MODEL: ${{ vars.AGENT_MODEL || 'claude-haiku-4-5-20251001' }}
+
+          # --- Sigil ingest (generations + scores) ---
+          SIGIL_ENDPOINT: ${{ vars.SIGIL_ENDPOINT }}
+          SIGIL_PROTOCOL: ${{ vars.SIGIL_PROTOCOL || 'http' }}
+          SIGIL_AUTH_MODE: ${{ vars.SIGIL_AUTH_MODE || 'basic' }}
+          SIGIL_AUTH_TENANT_ID: ${{ vars.SIGIL_AUTH_TENANT_ID }}
+          SIGIL_AUTH_TOKEN: ${{ secrets.SIGIL_AUTH_TOKEN }}
+          SIGIL_AGENT_NAME: ${{ vars.SIGIL_AGENT_NAME || 'sir-alex-fpl' }}
+          SIGIL_AGENT_VERSION: ${{ vars.SIGIL_AGENT_VERSION || '1.0.0' }}
+
+          # --- Experiment control plane (separate host + auth from ingest) ---
+          SIGIL_EVAL_ENDPOINT: ${{ vars.SIGIL_EVAL_ENDPOINT }}
+          SIGIL_EVAL_PATH_PREFIX: ${{ vars.SIGIL_EVAL_PATH_PREFIX || '/api/plugins/grafana-sigil-app/resources' }}
+          SIGIL_EVAL_AUTH_TOKEN: ${{ secrets.SIGIL_EVAL_AUTH_TOKEN }}
+        run: PYTHONPATH=. python experiment.py

@@ -401,18 +401,40 @@ def main() -> None:
     print(
         f"Running experiment '{run_id}' over {len(DATASET)} scenarios with model {MODEL} ({mode})...\n"
     )
+    # MIN_PASS_RATE gates the process exit code: if set (e.g. "0.5" in CI), a run
+    # whose pass_rate falls below it exits non-zero so the CI step fails. Left
+    # unset, the runner never fails on a low pass rate (local/exploratory runs).
+    min_pass_rate_raw = os.getenv("MIN_PASS_RATE", "").strip()
+    min_pass_rate = float(min_pass_rate_raw) if min_pass_rate_raw else None
+
     try:
         result = runner.run(DATASET, make_target(agent), scorers)
         expected_scores = len(DATASET) * len(scorers)
         print(f"\nDone: {result.accepted_scores}/{expected_scores} scores accepted.")
+        pass_rate = None
         if result.report is not None:
             s = result.report.summary
+            pass_rate = s.pass_rate
             print(
                 f"pass_rate={s.pass_rate:.2f}  mean_score={s.mean_score:.2f}  n_scores={s.n_scores}"
             )
         print(f"\nView in Sigil: {result.url}")
     finally:
         client.shutdown()
+
+    if min_pass_rate is not None:
+        if pass_rate is None:
+            raise SystemExit(
+                f"MIN_PASS_RATE={min_pass_rate:.2f} was set but no pass rate is available "
+                "(no report — was scoring skipped via SKIP_SCORES?). Failing."
+            )
+        if pass_rate < min_pass_rate:
+            raise SystemExit(
+                f"pass_rate {pass_rate:.2f} is below the required minimum {min_pass_rate:.2f}. Failing."
+            )
+        print(
+            f"pass_rate {pass_rate:.2f} meets the required minimum {min_pass_rate:.2f}. OK."
+        )
 
 
 if __name__ == "__main__":
