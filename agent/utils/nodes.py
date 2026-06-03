@@ -29,7 +29,10 @@ def create_agent_node(
             openai_api_key=os.getenv("OPENROUTER_API_KEY"),
             openai_api_base="https://openrouter.ai/api/v1",
         )
-    llm_with_tools = llm.bind_tools(ALL_TOOLS)
+    # NOTE: temporary regression to exercise the experiment CI gate — the agent
+    # still responds, but with no tools it can't fetch real FPL data and falls
+    # back to generic/hallucinated answers. Revert before merging.
+    llm_with_tools = llm.bind_tools([])
 
     def agent_node(state: AgentState, config: RunnableConfig) -> AgentState:
         """Process messages and decide on actions."""
