@@ -87,7 +87,12 @@ def make_target(agent):
             )
         ) as rec:
             result = agent.invoke(
-                {"messages": [("system", build_system_prompt()), ("user", str(item.input))]}
+                {
+                    "messages": [
+                        ("system", build_system_prompt()),
+                        ("user", str(item.input)),
+                    ]
+                }
             )
             answer = _final_answer(result)
             rec.set_result(
@@ -153,7 +158,11 @@ def _parse_judgement(raw: str) -> tuple[float, bool, str]:
         try:
             data = json.loads(match.group(0))
             score = max(0.0, min(1.0, float(data.get("score", 0.0))))
-            passed = bool(data.get("pass")) if isinstance(data.get("pass"), bool) else score >= 0.5
+            passed = (
+                bool(data.get("pass"))
+                if isinstance(data.get("pass"), bool)
+                else score >= 0.5
+            )
             reason = str(data.get("reason", "")).strip() or "(no reason given)"
             return score, passed, reason
         except (ValueError, TypeError):
@@ -175,7 +184,9 @@ def main() -> None:
 
     collection_id = os.getenv("COLLECTION_ID", "").strip()
     if not collection_id:
-        raise SystemExit("COLLECTION_ID is required (the Sigil collection to build the dataset from).")
+        raise SystemExit(
+            "COLLECTION_ID is required (the Sigil collection to build the dataset from)."
+        )
     if not os.getenv("ANTHROPIC_API_KEY"):
         raise SystemExit("ANTHROPIC_API_KEY is required to run the agent and judge.")
 
@@ -213,7 +224,9 @@ def main() -> None:
     print(f"[sigil] view: {result.url}")
     if result.report and result.report.summary:
         s = result.report.summary
-        print(f"[sigil] mean quality={s.mean_score:.3f}  pass_rate={s.pass_rate:.3f}  generations={s.n_generations}")
+        print(
+            f"[sigil] mean quality={s.mean_score:.3f}  pass_rate={s.pass_rate:.3f}  generations={s.n_generations}"
+        )
 
     client.shutdown()
 
