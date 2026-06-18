@@ -301,13 +301,8 @@ def _parse_pass(value: object, score: float) -> bool:
 
 
 def build_client() -> Client:
-    """Sigil client driven by SIGIL_* env (Grafana Cloud: basic auth over HTTP).
+    """Sigil client driven by SIGIL_* env (Grafana Cloud: basic auth over HTTP)."""
 
-    The agent's own generation export reads SIGIL_* automatically; the only extra
-    bit experiments need is the HTTP control-plane base URL (create experiment /
-    export scores), which is not an env var by default — so point ApiConfig at the
-    same SIGIL_ENDPOINT.
-    """
     endpoint = os.getenv("SIGIL_ENDPOINT", "http://localhost:8080")
     return Client(ClientConfig(api=ApiConfig(endpoint=endpoint)))
 
@@ -329,23 +324,19 @@ def _print_run_targets(run_id: str) -> None:
     def tok(name: str) -> str:
         return "set" if os.getenv(name, "").strip() else "unset"
 
-    gen = os.getenv("SIGIL_ENDPOINT", "http://localhost:8080")
-    eval_ep = os.getenv("SIGIL_EVAL_ENDPOINT", "").strip()
-    eval_prefix = os.getenv("SIGIL_EVAL_PATH_PREFIX", "").strip() or "/api/v1"
-    exp_base = _origin(eval_ep) if eval_ep else _origin(gen)
-    exp_prefix = eval_prefix if eval_ep else "/api/v1"
+    endpoint = os.getenv("SIGIL_ENDPOINT", "http://localhost:8080")
+    base = _origin(endpoint)
 
     print("── Sigil run targets " + "─" * 45)
     print(f"  run_id       : {run_id}")
     print(f"  model        : {MODEL}")
-    print(f"  generations  : {gen}")
-    print(f"  scores       : {_origin(gen)}/api/v1/scores:export")
-    print(f"  experiments  : {exp_base}{exp_prefix}/eval/experiments")
+    print(f"  endpoint     : {endpoint}")
+    print(f"  generations  : {base}/api/v1/generations:export")
+    print(f"  scores       : {base}/api/v1/scores:export")
+    print(f"  experiments  : {base}/api/v1/experiment-runs:upsert")
+    print(f"  finalize     : {base}/api/v1/experiment-runs/{{run_id}}:finalize")
     print(
         f"  auth         : mode={os.getenv('SIGIL_AUTH_MODE', 'tenant')} tenant={os.getenv('SIGIL_AUTH_TENANT_ID', '')} token={tok('SIGIL_AUTH_TOKEN')}"
-    )
-    print(
-        f"  eval auth    : endpoint={eval_ep or '(none — same as scores)'} token={tok('SIGIL_EVAL_AUTH_TOKEN')}"
     )
     print("─" * 66)
 

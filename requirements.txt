@@ -12,8 +12,8 @@ langchain-anthropic>=1.3.0
 langgraph-checkpoint-aws==1.0.3
 
 # Sigil
-sigil-sdk>=0.8.0
-sigil-sdk-langgraph>=0.8.0
+sigil-sdk>=0.9.0
+sigil-sdk-langgraph>=0.9.0
 
 # Testing
 pytest>=8.0.0
