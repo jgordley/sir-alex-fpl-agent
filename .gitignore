@@ -62,6 +62,9 @@ env/
 # Environment variables
 .env
 *.env
+.env.experiment.*
+!.env.experiment.sample
+!.env.experiment.run-local
 
 # IDE / Editor
 .idea/
