@@ -1,178 +1,150 @@
-"""Run a Sigil experiment whose dataset is pulled from a Sigil collection.
+"""Run a Sigil experiment from a saved-conversation collection.
 
-Unlike ``experiment.py`` (which hard-codes a dataset and uses the LangGraph
-adapter), this script demonstrates the *core* ``sigil-sdk`` feature:
-
-    1. Pull a dataset straight from a Sigil collection of saved conversations
-       (``dataset_from_collection``). Each item's ``input`` is the *initial user
-       prompt* of that conversation.
-    2. Re-run the agent from scratch on that prompt (the "user-prompt kickoff").
-    3. Grade the fresh answer with a pure numeric LLM-judge score and publish.
-
-The experiment run is linked back to the collection: its ``collection_id`` is
-set and a ``collectionId:<id>`` tag is added, so you can find the run from the
-collection in the Sigil UI / ``gcx``.
+This uses the current ``sigil_sdk.experiments`` API. The collection is read with
+the core Sigil conversation APIs, converted into a ``TestSuite``, and replayed as
+typed experiment trials.
 
 Run it:
 
     COLLECTION_ID=<id> PYTHONPATH=. python experiment_from_collection.py
-
-Env (same Sigil config as experiment.py — see .env):
-    COLLECTION_ID       required; the collection to build the dataset from
-    ANTHROPIC_API_KEY   required; drives the agent and the LLM judge
-    AGENT_MODEL         agent + judge model (default from .env)
-    RUN_ID              stable run id (defaults to a timestamp)
-    DATASET_LIMIT       optional cap on number of conversations pulled
 """
 
 from __future__ import annotations
 
-import json
 import os
-import re
 import time
+from typing import Any
 
 from dotenv import load_dotenv
 from langchain_anthropic import ChatAnthropic
-from sigil_sdk import (
-    ApiConfig,
-    Client,
-    ClientConfig,
-    DatasetItem,
-    ExperimentRun,
-    ExperimentRunner,
-    Generation,
-    GenerationStart,
-    ModelRef,
-    ScoreOutput,
-    ScoreValue,
-    TargetResult,
-    assistant_text_message,
-    dataset_from_collection,
-    user_text_message,
-)
+from sigil_sdk import experiments as sigil
 
+import experiment as fixed_suite
 from agent.agent import create_agent
-from agent.utils import build_system_prompt
 
 MODEL = os.getenv("AGENT_MODEL", "claude-haiku-4-5-20251001")
-JUDGE_VERSION = "2026-06-03"
+SUITE_VERSION = "2026-06-29"
 
 
-def _final_answer(result: dict) -> str:
-    """Extract the agent's final textual answer from the graph result."""
-    for message in reversed(result.get("messages", [])):
-        content = getattr(message, "content", "")
-        tool_calls = getattr(message, "tool_calls", None)
-        if content and not tool_calls:
-            return str(content)
+def _required_env(name: str) -> str:
+    value = os.getenv(name, "").strip()
+    if not value:
+        raise SystemExit(f"{name} is required.")
+    return value
+
+
+def _build_client() -> sigil.Client:
+    return sigil.Client(
+        _required_env("SIGIL_ENDPOINT"),
+        tenant_id=os.getenv("SIGIL_AUTH_TENANT_ID", "").strip(),
+        ingest_token=_required_env("SIGIL_AUTH_TOKEN"),
+        grafana_url=os.getenv("SIGIL_GRAFANA_URL", "").strip(),
+        actor=os.getenv("SIGIL_INGEST_ACTOR", "").strip(),
+    )
+
+
+def _role_is_user(role: Any) -> bool:
+    normalized = str(role or "").strip().lower()
+    return normalized in ("user", "message_role_user") or normalized.endswith(
+        "_role_user"
+    )
+
+
+def _part_text(part: Any) -> str:
+    if isinstance(part, str):
+        return part
+    if not isinstance(part, dict):
+        return ""
+    value = part.get("text")
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        return str(value.get("text") or value.get("content") or "")
+    return str(part.get("content") or "")
+
+
+def _message_text(message: Any) -> str:
+    if not isinstance(message, dict):
+        return ""
+    parts = message.get("parts")
+    if isinstance(parts, list):
+        text = "\n".join(
+            chunk for chunk in (_part_text(part) for part in parts) if chunk
+        )
+        if text:
+            return text
+    content = message.get("content")
+    if isinstance(content, str):
+        return content
     return ""
 
 
-def make_target(agent):
-    """Target: re-run the agent from the dataset item's initial user prompt.
+def _initial_user_prompt(conversation: dict[str, Any]) -> str:
+    for generation in conversation.get("generations") or []:
+        if not isinstance(generation, dict):
+            continue
+        for message in generation.get("input") or []:
+            if isinstance(message, dict) and _role_is_user(message.get("role")):
+                text = _message_text(message).strip()
+                if text:
+                    return text
+    for message in conversation.get("messages") or []:
+        if isinstance(message, dict) and _role_is_user(
+            message.get("role") or message.get("type")
+        ):
+            text = _message_text(message).strip()
+            if text:
+                return text
+    return ""
 
-    The agent call is recorded as a Sigil generation via ``run.start_generation``
-    so it carries the experiment run_id and its id is captured for scoring — this
-    is the framework-free (core SDK) integration point.
-    """
 
-    def target(item: DatasetItem, run: ExperimentRun) -> TargetResult:
-        with run.start_generation(
-            GenerationStart(
-                model=ModelRef(provider="anthropic", name=MODEL),
-                agent_name=os.getenv("SIGIL_AGENT_NAME", "sir-alex-fpl"),
-                operation_name="generateText",
-                conversation_title=str(item.input)[:120],
+def suite_from_collection(
+    client: sigil.Client,
+    collection_id: str,
+    *,
+    limit: int | None = None,
+) -> sigil.TestSuite:
+    members = client.core.list_collection_members(collection_id)
+    if limit is not None:
+        members = members[:limit]
+
+    cases: list[sigil.TestCase] = []
+    for index, member in enumerate(members, start=1):
+        conversation_id = str(member.get("conversation_id") or "").strip()
+        if not conversation_id:
+            continue
+        conversation = client.core.get_conversation(conversation_id)
+        prompt = _initial_user_prompt(conversation)
+        if not prompt:
+            print(f"[sigil] skipping {conversation_id}: no initial user prompt found")
+            continue
+        saved_id = str(member.get("saved_id") or member.get("id") or conversation_id)
+        case_id = sigil.stable_id("case", collection_id, saved_id, index)
+        cases.append(
+            sigil.TestCase(
+                test_case_id=case_id,
+                name=str(member.get("name") or f"Collection item {index}"),
+                input=prompt,
+                expected="Answer the user's Fantasy Premier League prompt directly and helpfully.",
+                category="collection-replay",
+                metadata={
+                    "collection_id": collection_id,
+                    "source_conversation_id": conversation_id,
+                    "saved_id": saved_id,
+                },
             )
-        ) as rec:
-            result = agent.invoke(
-                {
-                    "messages": [
-                        ("system", build_system_prompt()),
-                        ("user", str(item.input)),
-                    ]
-                }
-            )
-            answer = _final_answer(result)
-            rec.set_result(
-                Generation(
-                    model=ModelRef(provider="anthropic", name=MODEL),
-                    input=[user_text_message(str(item.input))],
-                    output=[assistant_text_message(answer)],
-                )
-            )
-        return TargetResult(output=answer)
+        )
 
-    return target
-
-
-def make_quality_judge(client: Client):
-    """A pure numeric quality score (0..1) from an LLM judge, recorded in Sigil."""
-
-    judge_llm = ChatAnthropic(model=MODEL)
-    prompt_template = (
-        "You are grading a Fantasy Premier League assistant's answer for overall quality.\n\n"
-        "User question:\n{input}\n\n"
-        "Assistant answer:\n{output}\n\n"
-        "Score 1.0 for an answer that directly addresses the question, is specific, and is useful. "
-        "Score 0.0 for an answer that misses the request or gives unusable advice.\n\n"
-        'Reply with ONLY a JSON object: {{"score": <float 0-1>, "pass": <true|false>, "reason": "<one sentence>"}}.'
+    if not cases:
+        raise SystemExit(
+            f"collection {collection_id} produced no replayable test cases."
+        )
+    return sigil.TestSuite(
+        suite_id=f"collection:{collection_id}",
+        name=f"Collection replay {collection_id}",
+        version=SUITE_VERSION,
+        test_cases=cases,
     )
-
-    def judge(item: DatasetItem, result: TargetResult) -> list[ScoreOutput]:
-        prompt = prompt_template.format(input=item.input, output=result.output)
-        with client.start_generation(
-            GenerationStart(
-                model=ModelRef(provider="anthropic", name=MODEL),
-                agent_name="fpl-llm-judge",
-                operation_name="llm-judge-quality",
-            )
-        ) as rec:
-            raw = str(judge_llm.invoke(prompt).content)
-            rec.set_result(
-                Generation(
-                    model=ModelRef(provider="anthropic", name=MODEL),
-                    input=[user_text_message(prompt)],
-                    output=[assistant_text_message(raw)],
-                )
-            )
-        score, passed, reason = _parse_judgement(raw)
-        return [
-            ScoreOutput(
-                evaluator_id="fpl_llm_judge.quality",
-                evaluator_version=JUDGE_VERSION,
-                score_key="quality",
-                value=ScoreValue(number=score),
-                passed=passed,
-                explanation=reason,
-            )
-        ]
-
-    return judge
-
-
-def _parse_judgement(raw: str) -> tuple[float, bool, str]:
-    match = re.search(r"\{.*\}", raw, re.DOTALL)
-    if match:
-        try:
-            data = json.loads(match.group(0))
-            score = max(0.0, min(1.0, float(data.get("score", 0.0))))
-            passed = (
-                bool(data.get("pass"))
-                if isinstance(data.get("pass"), bool)
-                else score >= 0.5
-            )
-            reason = str(data.get("reason", "")).strip() or "(no reason given)"
-            return score, passed, reason
-        except (ValueError, TypeError):
-            pass
-    return 0.0, False, f"could not parse judge output: {raw[:160]}"
-
-
-def build_client() -> Client:
-    endpoint = os.getenv("SIGIL_ENDPOINT", "http://localhost:8080")
-    return Client(ClientConfig(api=ApiConfig(endpoint=endpoint)))
 
 
 def main() -> None:
@@ -181,54 +153,111 @@ def main() -> None:
     )
     global MODEL
     MODEL = os.getenv("AGENT_MODEL", MODEL)
+    fixed_suite.MODEL = MODEL
 
     collection_id = os.getenv("COLLECTION_ID", "").strip()
     if not collection_id:
-        raise SystemExit(
-            "COLLECTION_ID is required (the Sigil collection to build the dataset from)."
-        )
+        raise SystemExit("COLLECTION_ID is required.")
     if not os.getenv("ANTHROPIC_API_KEY"):
         raise SystemExit("ANTHROPIC_API_KEY is required to run the agent and judge.")
 
-    client = build_client()
-
+    client = _build_client()
     limit_env = os.getenv("DATASET_LIMIT", "").strip()
     limit = int(limit_env) if limit_env else None
     print(f"[sigil] pulling dataset from collection {collection_id} ...")
-    dataset = dataset_from_collection(client, collection_id, limit=limit)
-    if not dataset:
-        raise SystemExit(f"collection {collection_id} produced no dataset items.")
-    print(f"[sigil] dataset has {len(dataset)} item(s):")
-    for item in dataset:
-        print(f"  - {item.id}: {str(item.input)[:80]!r}")
+    suite = suite_from_collection(client, collection_id, limit=limit)
+    print(f"[sigil] dataset has {len(suite.cases)} item(s):")
+    for case in suite.cases:
+        print(f"  - {case.test_case_id}: {str(case.input)[:80]!r}")
+
+    experiment_id = (
+        os.getenv("SIGIL_EXPERIMENT_ID", "").strip()
+        or os.getenv("RUN_ID", "").strip()
+        or f"sir-alex-fpl-collection-{int(time.time())}"
+    )
+    os.environ["SIGIL_EXPERIMENT_ID"] = experiment_id
 
     agent = create_agent(MODEL, llm=ChatAnthropic(model=MODEL))
-    run_id = os.getenv("RUN_ID", f"sir-alex-fpl-collection-{int(time.time())}")
-
-    runner = ExperimentRunner(
-        client=client,
-        run_id=run_id,
-        name=f"Sir Alex FPL — collection replay ({MODEL})",
-        description=f"User-prompt kickoff replay of collection {collection_id}",
-        dataset={"id": f"collection:{collection_id}", "version": JUDGE_VERSION},
-        candidate={"model": MODEL},
-        tags=["sir-alex-fpl", "collection-replay", MODEL],
-        collection_id=collection_id,
-        agent_name=os.getenv("SIGIL_AGENT_NAME", "sir-alex-fpl"),
-        agent_version=os.getenv("SIGIL_AGENT_VERSION", "1.0.0"),
+    judge_llm = ChatAnthropic(model=MODEL)
+    quality = sigil.Evaluator(
+        "fpl_llm_judge.quality", version=fixed_suite.JUDGE_VERSION, kind="llm_judge"
     )
+    skip_scores = os.getenv("SKIP_SCORES", "").strip().lower() in ("1", "true", "yes")
+    report = None
 
-    result = runner.run(dataset, make_target(agent), [make_quality_judge(client)])
+    try:
+        with sigil.Experiment(
+            client,
+            experiment_id=experiment_id,
+            name=f"Sir Alex FPL collection replay ({MODEL})",
+            description=f"User-prompt replay of collection {collection_id}",
+            suite=suite,
+            candidate={
+                "agent_name": os.getenv("SIGIL_AGENT_NAME", "sir-alex-fpl"),
+                "agent_version": os.getenv("SIGIL_AGENT_VERSION", "1.0.0"),
+                "model_provider": "anthropic",
+                "model_name": MODEL,
+            },
+            tags=[
+                "sir-alex-fpl",
+                "collection-replay",
+                MODEL,
+                f"collectionId:{collection_id}",
+            ],
+            metadata={"collection_id": collection_id},
+        ) as experiment:
+            for case in suite.cases:
+                with experiment.trial(case, metadata=case.metadata) as trial:
+                    conversation_id = sigil.stable_id(
+                        "conv", experiment.experiment_id, case.test_case_id
+                    )
+                    trial.bind_conversation(conversation_id)
+                    answer = fixed_suite.run_agent_case(
+                        agent, experiment.client, case, conversation_id
+                    )
+                    trial.record_io(
+                        input=case.input,
+                        output=answer,
+                        model_provider="anthropic",
+                        model_name=MODEL,
+                        agent_name=os.getenv("SIGIL_AGENT_NAME", "sir-alex-fpl"),
+                    )
+                    if skip_scores:
+                        continue
+                    judgement = fixed_suite.run_judge(
+                        client=experiment.client,
+                        judge_llm=judge_llm,
+                        experiment_id=experiment.experiment_id,
+                        case=case,
+                        answer=answer,
+                        evaluator_id=quality.evaluator_id,
+                        operation_name="llm-judge-quality",
+                        prompt_template=fixed_suite.QUALITY_PROMPT,
+                    )
+                    trial.score(
+                        "final",
+                        judgement.score,
+                        passed=judgement.passed,
+                        explanation=judgement.reason,
+                        evaluator=quality,
+                        grader_conversation_id=judgement.conversation_id,
+                        grader_generation_id=judgement.generation_id,
+                    )
+            if not skip_scores:
+                report = experiment.report()
+    finally:
+        client.shutdown()
 
-    print(f"\n[sigil] run '{run_id}' done — {result.accepted_scores} score(s)")
-    print(f"[sigil] view: {result.url}")
-    if result.report and result.report.summary:
-        s = result.report.summary
+    print(
+        f"\n[sigil] run '{experiment_id}' done - {experiment.accepted_scores} score(s)"
+    )
+    print(f"[sigil] view: {experiment.url}")
+    if report is not None:
         print(
-            f"[sigil] mean quality={s.mean_score:.3f}  pass_rate={s.pass_rate:.3f}  generations={s.n_generations}"
+            f"[sigil] mean quality={report.summary.final_score_avg:.3f}  "
+            f"pass_rate={report.summary.pass_rate:.3f}  "
+            f"generations={report.summary.n_generations}"
         )
-
-    client.shutdown()
 
 
 if __name__ == "__main__":

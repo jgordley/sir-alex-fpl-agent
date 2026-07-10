@@ -55,7 +55,7 @@ def _with_sigil_config(
         return config
 
     try:
-        from sigil_sdk_langgraph import with_sigil_langgraph_callbacks
+        from sigil_sdk_langgraph import SigilLangGraphHandler
 
         title = " ".join(user_message.split())[:120] or "Sir Alex FPL turn"
         metadata = {
@@ -65,17 +65,34 @@ def _with_sigil_config(
             metadata["sir_alex.actor_id"] = actor_id
         if session_id:
             metadata["sir_alex.session_id"] = session_id
+            metadata["conversation_id"] = session_id
 
-        return with_sigil_langgraph_callbacks(
-            config,
-            client=_get_sigil_client(),
-            provider_resolver="auto",
-            agent_name=os.getenv("SIGIL_AGENT_NAME", "sir-alex-fpl"),
-            agent_version=os.getenv("SIGIL_AGENT_VERSION", "1.0.0"),
-            capture_workflow_steps=True,
-            conversation_title=title,
-            extra_metadata=metadata,
-        )
+        merged = dict(config or {})
+        merged["metadata"] = {**dict(merged.get("metadata") or {}), **metadata}
+        existing = merged.get("callbacks")
+        if isinstance(existing, list):
+            callbacks = list(existing)
+        elif existing is None:
+            callbacks = []
+        else:
+            callbacks = [existing]
+
+        if not any(
+            isinstance(callback, SigilLangGraphHandler) for callback in callbacks
+        ):
+            callbacks.append(
+                SigilLangGraphHandler(
+                    client=_get_sigil_client(),
+                    provider_resolver="auto",
+                    agent_name=os.getenv("SIGIL_AGENT_NAME", "sir-alex-fpl"),
+                    agent_version=os.getenv("SIGIL_AGENT_VERSION", "1.0.0"),
+                    capture_workflow_steps=True,
+                    conversation_title=title,
+                    extra_metadata=metadata,
+                )
+            )
+        merged["callbacks"] = callbacks
+        return merged
     except Exception as exc:
         logger.warning("Sigil LangGraph instrumentation disabled for this run: %s", exc)
         return config
